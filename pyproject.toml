@@ -1,0 +1,19 @@
+[project]
+name = "lendflow"
+version = "0.1.0"
+description = "Credit & Collections analytics pipeline for fintech: PySpark, Delta Lake, dbt-athena, Airflow"
+readme = "README.md"
+authors = [
+    { name = "Carlos Leguizamon", email = "carlosleguizamonguillaumet1998@gmail.com" }
+]
+requires-python = ">=3.11.9"
+dependencies = [
+    "pyspark==3.5.3",
+]
+
+[project.scripts]
+lendflow = "lendflow:main"
+
+[build-system]
+requires = ["uv_build>=0.12.0,<0.13.0"]
+build-backend = "uv_build"

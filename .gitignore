@@ -1,0 +1,54 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+.venv/
+venv/
+env/
+ENV/
+*.egg-info/
+dist/
+build/
+
+# uv
+.uv/
+
+# Jupyter
+.ipynb_checkpoints/
+*.ipynb_checkpoints
+
+# Spark
+spark-warehouse/
+metastore_db/
+derby.log
+*.crc
+
+# Delta Lake
+_delta_log/
+
+# Data (no commiteamos datasets)
+data/raw/
+data/bronze/
+data/silver/
+data/gold/
+*.csv
+*.parquet
+*.zip
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Secrets
+.env
+.env.local
+*.pem
+credentials.json
