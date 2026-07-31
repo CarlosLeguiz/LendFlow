@@ -20,14 +20,13 @@ from pyspark.sql.types import (
     TimestampType,  # tipo fecha con hora
 )
 
-LOANS_BRONZE_SCHEMA = StructType([
-    # El id lo dejo como string aunque parezca numero. Nunca voy a sumarlo ni
-    # promediarlo, y si algun dia Lending Club decide meterle letras no quiero
-    # que se rompa todo.
+# Columnas que vienen directamente del CSV de Lending Club.
+# Este es el schema que usa el reader al leer el archivo raw.
+LOANS_RAW_SCHEMA = StructType([
+    # Identificador. Lo dejo como string aunque parezca numero.
     StructField("id", StringType(), nullable=False),
 
-    # Monto solicitado y monto realmente financiado. Pueden diferir cuando el
-    # inversor no cubre el total del pedido.
+    # Monto solicitado y monto realmente financiado.
     StructField("loan_amnt", DoubleType(), nullable=True),
     StructField("funded_amnt", DoubleType(), nullable=True),
 
@@ -47,7 +46,6 @@ LOANS_BRONZE_SCHEMA = StructType([
     StructField("emp_title", StringType(), nullable=True),
 
     # Antiguedad laboral. Viene como "< 1 year", "10+ years", etc.
-    # Lo dejo como string, lo mapeo a numero en silver.
     StructField("emp_length", StringType(), nullable=True),
 
     # Situacion habitacional: RENT, OWN, MORTGAGE, OTHER.
@@ -59,66 +57,56 @@ LOANS_BRONZE_SCHEMA = StructType([
     # Si Lending Club verifico o no el ingreso declarado.
     StructField("verification_status", StringType(), nullable=True),
 
-    # Debt to income ratio. Ratio deuda mensual / ingreso mensual.
+    # Debt to income ratio.
     StructField("dti", DoubleType(), nullable=True),
 
     # Individual o Joint (con codeudor).
     StructField("application_type", StringType(), nullable=True),
 
-    # Proposito del prestamo: debt_consolidation, credit_card, home_improvement, etc.
-    # title es el texto libre que puso el deudor; suele ser mas sucio.
+    # Proposito del prestamo y titulo libre.
     StructField("purpose", StringType(), nullable=True),
     StructField("title", StringType(), nullable=True),
 
-    # zip_code viene enmascarado por privacidad. Formato "310xx".
-    # addr_state es el estado (CA, NY, TX, etc.).
+    # zip_code enmascarado ("310xx") y estado.
     StructField("zip_code", StringType(), nullable=True),
     StructField("addr_state", StringType(), nullable=True),
 
-    # Fecha de originacion del prestamo. Formato "Dec-2018".
-    # La parseo en silver porque el formato es fragil.
+    # Fechas: formato "Dec-2018". Se parsean en silver.
     StructField("issue_d", StringType(), nullable=True),
-
-    # Fecha del ultimo pago. Null si el prestamo esta charged off desde el arranque.
     StructField("last_pymnt_d", StringType(), nullable=True),
-
-    # Fecha en que el deudor abrio su primer credito. Sirve para calcular
-    # antiguedad crediticia en silver.
     StructField("earliest_cr_line", StringType(), nullable=True),
 
-    # loan_status es la columna mas importante del proyecto.
-    # Valores tipicos: Current, Fully Paid, Charged Off, Late (16-30 days),
-    # Late (31-120 days), In Grace Period, Default, Issued.
+    # loan_status: Current, Fully Paid, Charged Off, Late, etc.
     StructField("loan_status", StringType(), nullable=True),
 
-    # Indica si el prestamo esta en algun plan de pago especial.
+    # Indica si el prestamo esta en plan de pago especial.
     StructField("pymnt_plan", StringType(), nullable=True),
 
-    # Saldo pendiente de capital.
+    # Saldo pendiente y desglose de pagos.
     StructField("out_prncp", DoubleType(), nullable=True),
-
-    # Total pagado hasta la fecha (capital + interes + fees).
     StructField("total_pymnt", DoubleType(), nullable=True),
-
-    # Desglose de lo pagado: capital, intereses, comisiones por mora.
     StructField("total_rec_prncp", DoubleType(), nullable=True),
     StructField("total_rec_int", DoubleType(), nullable=True),
     StructField("total_rec_late_fee", DoubleType(), nullable=True),
 
-    # Monto recuperado post charge-off. Clave para calcular recovery rate.
+    # Monto recuperado post charge-off.
     StructField("recoveries", DoubleType(), nullable=True),
 
-    # FICO score al momento de originar. Viene como rango (low y high).
-    # El score real cae en algun punto entre esos dos.
+    # FICO score al momento de originar (rango).
     StructField("fico_range_low", DoubleType(), nullable=True),
     StructField("fico_range_high", DoubleType(), nullable=True),
 
-    # Utilizacion de credito revolvente. Viene con el "%" al final ("32.5%"),
-    # por eso queda como string; se limpia y castea en silver.
+    # Utilizacion de credito revolvente. Viene con "%".
     StructField("revol_util", StringType(), nullable=True),
-
-    # Metadata de ingesta.
-    StructField("_ingested_at", TimestampType(), nullable=False),
-    StructField("_source_file", StringType(), nullable=False),
-    StructField("_batch_id", StringType(), nullable=False),
 ])
+
+
+# Schema completo del bronze final: raw + metadata de ingesta.
+# Estas 3 columnas las agrega el pipeline, no vienen del source.
+LOANS_BRONZE_SCHEMA = StructType(
+    LOANS_RAW_SCHEMA.fields + [
+        StructField("_ingested_at", TimestampType(), nullable=False),
+        StructField("_source_file", StringType(), nullable=False),
+        StructField("_batch_id", StringType(), nullable=False),
+    ]
+)
