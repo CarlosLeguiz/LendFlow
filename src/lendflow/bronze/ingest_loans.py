@@ -29,22 +29,53 @@ BRONZE_PATH = "data/bronze/loans"
 
 def read_raw_csv(spark: SparkSession, path: str) -> DataFrame:
     """
-    Lee el CSV raw aplicando el schema explicito.
+    Lee el CSV raw y selecciona las 33 columnas del bronze.
 
-    Uso mode="PERMISSIVE" que es el default: si una fila esta mal formateada,
-    Spark la carga con nulls en las columnas problematicas en vez de fallar.
-    Es lo que queremos en bronze: ser tolerantes a suciedad y limpiar en silver.
+    Ojo importante: Spark aplica el schema por POSICION, no por nombre,
+    incluso con header=true. Como el CSV tiene 151 columnas y nuestro schema
+    tiene 33, aplicar el schema directamente desalinea todo (por ejemplo
+    'issue_d' terminaba llenandose con el contenido de 'desc').
+
+    Solucion: leer sin schema forzado (todo como string), y despues
+    seleccionar las 33 columnas por NOMBRE casteando al tipo correcto
+    definido en LOANS_RAW_SCHEMA. Asi el mapeo es a prueba de reordering.
     """
-    return (
+    # Leemos todo como string, dejando que Spark tome los headers del CSV.
+    df_all = (
         spark.read
         .option("header", "true")
         .option("mode", "PERMISSIVE")
-        # El CSV tiene comillas con comas adentro (texto libre). Spark las maneja bien pero conviene ser explicito.
         .option("quote", '"')
         .option("escape", '"')
-        .schema(LOANS_RAW_SCHEMA)
         .csv(path)
     )
+
+    # Ahora seleccionamos solo las 33 columnas que queremos, casteando
+    # cada una al tipo que definimos en el schema.
+    select_exprs = [
+        F.col(field.name).cast(field.dataType).alias(field.name)
+        for field in LOANS_RAW_SCHEMA.fields
+    ]
+    return df_all.select(*select_exprs)
+
+
+def filter_valid_rows(df: DataFrame) -> tuple[DataFrame, int]:
+    """
+    Descarta las filas basura del CSV.
+
+    Lending Club inserto 33 filas de subtotal en el CSV que no son prestamos
+    reales, son texto tipo "Total amount funded in policy code 1: ...".
+    Las detecto porque el campo 'id' no matchea el patron numerico.
+
+    Retorna:
+        - DataFrame filtrado (solo filas validas).
+        - Cantidad de filas descartadas (para logging/auditoria).
+    """
+    total_before = df.count()
+    df_valid = df.filter(F.col("id").rlike("^[0-9]+$"))
+    total_after = df_valid.count()
+    discarded = total_before - total_after
+    return df_valid, discarded
 
 
 def add_ingest_metadata(df: DataFrame, source_file: str, batch_id: str) -> DataFrame:
@@ -109,12 +140,14 @@ def main() -> None:
     print(f"  Destino: {BRONZE_PATH}")
     print(f"  Batch ID: {batch_id}")
 
-    # Pipeline: leer -> agregar metadata -> agregar particion -> escribir.
+    # Pipeline: leer -> filtrar basura -> agregar metadata -> particion -> escribir.
     df_raw = read_raw_csv(spark, RAW_PATH)
-    df_with_metadata = add_ingest_metadata(df_raw, source_file, batch_id)
+    df_valid, discarded = filter_valid_rows(df_raw)
+    print(f"Filas descartadas (id no numerico): {discarded}")
+
+    df_with_metadata = add_ingest_metadata(df_valid, source_file, batch_id)
     df_final = add_partition_column(df_with_metadata)
 
-    # Antes de escribir, cuento filas para tener un log claro.
     row_count = df_final.count()
     print(f"Filas a escribir: {row_count:,}")
 
