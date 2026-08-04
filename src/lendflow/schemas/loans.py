@@ -96,8 +96,10 @@ LOANS_RAW_SCHEMA = StructType([
     StructField("fico_range_low", DoubleType(), nullable=True),
     StructField("fico_range_high", DoubleType(), nullable=True),
 
-    # Utilizacion de credito revolvente. Viene con "%".
-    StructField("revol_util", StringType(), nullable=True),
+    # Utilizacion de credito revolvente. Numero entre 0 y ~100.
+    # Originalmente pensaba que venia con "%" pero al validar contra el CSV
+    # aparecen sin el simbolo, asi que va como Double.
+    StructField("revol_util", DoubleType(), nullable=True),
 ])
 
 

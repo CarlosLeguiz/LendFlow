@@ -158,3 +158,61 @@ Si más adelante quisiera construir un modelo de riesgo crediticio, seguramente 
 
 De la misma manera, si apareciera la necesidad de analizar procesos de hardship o settlement, esos datos podrían integrarse como tablas específicas del dominio, manteniendo la tabla principal enfocada únicamente en la información esencial del préstamo.
 ```
+
+## Hallazgos del analisis de columnas
+
+Antes de escribir el pipeline, hice un notebook de analisis (`notebooks/02_column_analysis.ipynb`)
+donde valide cada columna del bronze contra datos reales del CSV.
+Encontre varias cosas que me hicieron corregir el schema y agregar reglas de calidad al job.
+
+### 33 filas basura
+
+El CSV trae 33 filas que no son prestamos: son subtotales que Lending Club
+inserto en el export ("Total amount funded in policy code 1: X",
+"Loans that do not meet the credit policy", etc.).
+
+Estas filas tienen todas las columnas en null salvo el "id" (que en realidad
+es texto libre, no un identificador). Las detecto porque el `id` no matchea
+`^[0-9]+$`.
+
+**Regla que aplico en bronze:** solo acepto filas donde `id` es numerico puro.
+Las 33 filas basura las descarto en el job y las logueo para auditoria.
+
+### int_rate y revol_util NO tienen simbolo %
+
+Mi hipotesis inicial era que venian como string con "%" al final ("13.99%")
+porque asi lo mostraba la documentacion de Lending Club en otras versiones
+del dataset. Al validar, resulta que en este CSV vienen ya limpios:
+`13.99`, `29.7`. Son numeros directos.
+
+**Ajuste al schema:** cambio `int_rate` y `revol_util` de StringType a DoubleType.
+
+Leccion: nunca asumir el formato de los datos, siempre validar contra el archivo real.
+Si hubiera confiado en la doc, en silver el parse habria explotado.
+
+### loan_status tiene 9 estados, no 6
+
+Los 6 estados esperados estan (`Current`, `Fully Paid`, `Charged Off`, `Late (16-30 days)`,
+`Late (31-120 days)`, `In Grace Period`, `Default`), mas 2 legacy:
+- `Does not meet the credit policy. Status:Fully Paid` (1,988 casos)
+- `Does not meet the credit policy. Status:Charged Off` (761 casos)
+
+**Ajuste en silver:** voy a normalizar esos 2 legacy mapeandolos a `Fully Paid`
+y `Charged Off` respectivamente. Tambien voy a crear una columna
+`delinquency_bucket` con los buckets estandar de mora.
+
+### annual_inc tiene outliers absurdos
+
+El max es USD 110 millones anuales, que es imposible. Son errores de tipeo
+(alguien puso ceros de mas).
+
+**Decision para bronze:** los dejo tal cual, bronze es raw.
+**Decision para silver:** voy a capear a un limite razonable (por ejemplo USD 10M)
+y marcar la fila con una flag `is_income_outlier` para trazabilidad.
+
+### Formatos confirmados
+
+- `issue_d`, `last_pymnt_d`, `earliest_cr_line`: formato "MMM-YYYY" (ej. "Dec-2018").
+- `term`: " 36 months" o " 60 months" (ojo con el espacio adelante).
+- `emp_length`: 12 categorias distintas ("< 1 year", "1 year", ..., "10+ years") + nulls.
+- Todos los montos (`loan_amnt`, `funded_amnt`, `installment`, `out_prncp`, etc.): numericos limpios.
