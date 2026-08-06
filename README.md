@@ -30,3 +30,5 @@ Fintech credit lifecycle: originations, portfolio performance, delinquency bucke
 ## Author
 
 Carlos Leguizamon Guillaumet
+
+LinkedIn
