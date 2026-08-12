@@ -62,3 +62,9 @@ terraform/*.tfvars
 
 # AWS
 .aws/
+
+# dbt
+lendflow_dbt/logs/
+lendflow_dbt/target/
+lendflow_dbt/dbt_packages/
+logs/
