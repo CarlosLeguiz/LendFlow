@@ -1,0 +1,72 @@
+version: 2
+
+sources:
+  - name: silver
+    description: >
+      Silver layer del proyecto LendFlow. Datos limpios y tipados de prestamos
+      de Lending Club, transformados desde bronze por el job de PySpark
+      `src/lendflow/silver/clean_loans.py`. Formato Delta Lake sobre S3,
+      catalogado en Glue.
+    database: awsdatacatalog
+    schema: lendflow_dev
+
+    # Freshness: si la data del silver no se actualiza en 30 dias, algo esta mal.
+    # En un proyecto real esto dispararia una alerta al pipeline owner.
+    freshness:
+      warn_after: {count: 7, period: day}
+      error_after: {count: 30, period: day}
+    loaded_at_field: _silver_processed_at
+
+    tables:
+      - name: silver_loans
+        description: >
+          Un registro por prestamo originado en Lending Club (2007-2018 Q4).
+          Ya viene con fechas parseadas, delinquency_bucket calculado y
+          outliers de ingreso capeados.
+        columns:
+          - name: id
+            description: Identificador unico del prestamo. Numerico como string.
+            data_tests:
+              - unique
+              - not_null
+
+          - name: loan_amnt
+            description: Monto solicitado por el deudor (USD).
+            data_tests:
+              - not_null
+
+          - name: issue_d_parsed
+            description: Fecha de originacion del prestamo (parseada a DATE).
+            data_tests:
+              - not_null
+
+          - name: loan_status_normalized
+            description: >
+              Estado del prestamo normalizado. Los 2 estados legacy
+              (Does not meet the credit policy...) ya estan mapeados
+              a Fully Paid / Charged Off.
+            data_tests:
+              - not_null
+              - accepted_values:
+                  values:
+                    - 'Current'
+                    - 'Fully Paid'
+                    - 'Charged Off'
+                    - 'Late (16-30 days)'
+                    - 'Late (31-120 days)'
+                    - 'In Grace Period'
+                    - 'Default'
+
+          - name: delinquency_bucket
+            description: >
+              Bucket estandar de credit risk derivado de loan_status.
+              Alimenta vintage curves y roll rates en gold.
+            data_tests:
+              - not_null
+              - accepted_values:
+                  values:
+                    - 'current'
+                    - 'late_early'
+                    - 'late_late'
+                    - 'default'
+                    - 'charged_off'
