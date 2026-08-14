@@ -1,0 +1,57 @@
+version: 2
+
+models:
+  - name: dim_date
+    description: >
+      Dimension calendario con una fila por fecha (2007-2020).
+      Contiene atributos derivados (year, quarter, month, day_name,
+      is_weekend, etc) para evitar recalcularlos en cada query
+      analitica. Es la dimension mas reutilizada del gold layer.
+
+    columns:
+      - name: date_key
+        description: >
+          Surrogate key en formato YYYYMMDD como integer.
+          Ejemplo: 2018-03-15 -> 20180315. Se usa como FK desde los facts.
+        data_tests:
+          - unique
+          - not_null
+
+      - name: full_date
+        description: Fecha completa en formato nativo DATE.
+        data_tests:
+          - unique
+          - not_null
+
+      - name: year
+        description: Anio de la fecha (2007-2020).
+        data_tests:
+          - not_null
+
+      - name: quarter
+        description: Trimestre del anio (1-4).
+        data_tests:
+          - not_null
+          - accepted_values:
+              values: ['1', '2', '3', '4']
+              quote: false
+
+      - name: month
+        description: Mes del anio (1-12).
+        data_tests:
+          - not_null
+
+      - name: day_of_week
+        description: Dia de la semana (1=lunes, 7=domingo).
+        data_tests:
+          - not_null
+
+      - name: is_weekend
+        description: Flag booleano, true si la fecha cae en sabado o domingo.
+        data_tests:
+          - not_null
+
+      - name: is_month_end
+        description: Flag booleano, true si es el ultimo dia del mes.
+        data_tests:
+          - not_null
