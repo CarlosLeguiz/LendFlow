@@ -1,0 +1,114 @@
+version: 2
+
+models:
+  - name: stg_loans
+    description: >
+      Staging de prestamos de Lending Club. Renombra columnas del silver
+      al lenguaje del negocio y deriva `fico_score_avg` a partir del rango.
+      No aplica agregaciones ni logica de negocio: esa capa vive en marts.
+
+    config:
+      contract:
+        enforced: false  # activar cuando el modelo este estable en prod
+
+    columns:
+      - name: loan_id
+        description: Identificador unico del prestamo (PK).
+        data_tests:
+          - unique
+          - not_null
+
+      - name: loan_amount
+        description: Monto solicitado por el deudor en USD.
+        data_tests:
+          - not_null
+          - dbt_utils.expression_is_true:
+              expression: "loan_amount >= 500 and loan_amount <= 40000"
+              config:
+                severity: warn
+
+      - name: funded_amount
+        description: >
+          Monto que efectivamente se financio al deudor en USD.
+          Debe ser <= loan_amount (invariante de negocio).
+        data_tests:
+          - not_null
+          - dbt_utils.expression_is_true:
+              expression: "<= loan_amount"
+
+      - name: interest_rate
+        description: "Tasa de interes anual (%). Ejemplo: 13.99 = 13.99%."
+        data_tests:
+          - not_null
+
+      - name: term_in_months
+        description: Plazo del prestamo en meses. Solo 36 o 60.
+        data_tests:
+          - not_null
+          - accepted_values:
+              values: ['36', '60']
+              quote: false
+
+      - name: loan_grade
+        description: Grado de riesgo asignado por Lending Club (A a G).
+        data_tests:
+          - not_null
+          - accepted_values:
+              values: ['A', 'B', 'C', 'D', 'E', 'F', 'G']
+
+      - name: loan_sub_grade
+        description: Sub-grado de riesgo (A1-G5). 35 valores posibles.
+        data_tests:
+          - not_null
+
+      - name: annual_income
+        description: >
+          Ingreso anual declarado en USD. Ya viene capeado en silver:
+          valores > 10M se convirtieron a NULL y quedaron marcados
+          con `annual_income_was_outlier = true`.
+
+      - name: annual_income_was_outlier
+        description: Flag que indica si annual_income original superaba el cap de 10M.
+        data_tests:
+          - not_null
+
+      - name: debt_to_income_ratio
+        description: Ratio deuda mensual / ingreso mensual del deudor.
+
+      - name: origination_date
+        description: Fecha en la que el prestamo se emitio.
+        data_tests:
+          - not_null
+
+      - name: loan_status
+        description: Estado normalizado del prestamo.
+        data_tests:
+          - not_null
+          - accepted_values:
+              values:
+                - 'Current'
+                - 'Fully Paid'
+                - 'Charged Off'
+                - 'Late (16-30 days)'
+                - 'Late (31-120 days)'
+                - 'In Grace Period'
+                - 'Default'
+
+      - name: delinquency_bucket
+        description: Bucket estandar de credit risk (current/late_early/late_late/default/charged_off).
+        data_tests:
+          - not_null
+          - accepted_values:
+              values: ['current', 'late_early', 'late_late', 'default', 'charged_off']
+
+      - name: fico_score_avg
+        description: >
+          Promedio del rango FICO al momento de originar.
+          Derivado como (fico_score_low + fico_score_high) / 2.
+
+      - name: origination_year
+        description: >
+          Anio de originacion. Columna de particion heredada del silver,
+          usada para optimizar queries por rango de fechas en Athena.
+        data_tests:
+          - not_null

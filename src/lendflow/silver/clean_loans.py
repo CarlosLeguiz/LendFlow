@@ -139,14 +139,19 @@ def cap_income_outliers(df: DataFrame) -> DataFrame:
     El max original era USD 110 millones, imposible (errores de tipeo con
     ceros de mas). Aplico regla: si annual_inc > ANNUAL_INC_MAX (10M),
     lo dejo en null y marco la fila con is_income_outlier=true para
-    trazabilidad. Asi los analisis descartan estos casos sin perder la
-    referencia de que existieron.
+    trazabilidad.
+
+    Manejo explicito de nulls: si annual_inc viene null desde bronze,
+    marco is_income_outlier=false (no puedo afirmar que sea outlier).
+    Los flags booleanos nunca deben ser null en un modelo de datos: eso
+    genera ambiguedad downstream ("verdadero, falso, o no se?").
     """
     return (
         df
         .withColumn(
             "is_income_outlier",
-            F.col("annual_inc") > ANNUAL_INC_MAX,
+            F.when(F.col("annual_inc").isNull(), F.lit(False))
+             .otherwise(F.col("annual_inc") > ANNUAL_INC_MAX),
         )
         .withColumn(
             "annual_inc_clean",
