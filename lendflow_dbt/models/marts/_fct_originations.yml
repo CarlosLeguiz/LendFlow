@@ -1,0 +1,163 @@
+version: 2
+
+models:
+  - name: fct_originations
+    description: >
+      GRANO: un prestamo en el momento de originacion.
+
+      Fact tabla principal del proyecto. Contiene el snapshot de cada prestamo
+      emitido por Lending Club entre 2007 y 2018, con las metricas de negocio
+      pre-calculadas y los atributos del deudor congelados al dia de la
+      originacion.
+
+      Diseño:
+        - Denormalizacion controlada de atributos consultados frecuente
+          (grade, purpose, state) para evitar joins en el 90% de las queries.
+        - Metricas pre-calculadas (total_expected_payment, expected_interest,
+          funding_ratio) para consumo instantaneo desde dashboards.
+        - Surrogate key origination_date_key (INT YYYYMMDD) para join con dim_date.
+
+      Alimenta:
+        - Metricas de originacion (volumen, mix, tickets promedio).
+        - Vintage curves (joineado con fct_loan_snapshot_monthly cuando exista).
+
+    columns:
+      # =======================================================================
+      # Identificadores y llaves
+      # =======================================================================
+      - name: loan_id
+        description: Identificador unico del prestamo (PK).
+        data_tests:
+          - unique
+          - not_null
+
+      - name: origination_date_key
+        description: >
+          FK a dim_date. Formato YYYYMMDD (integer).
+          Ejemplo: 2018-03-15 -> 20180315.
+        data_tests:
+          - not_null
+          - relationships:
+              to: ref('dim_date')
+              field: date_key
+
+      # =======================================================================
+      # Atributos denormalizados
+      # =======================================================================
+      - name: loan_grade
+        description: Grado de riesgo asignado por Lending Club (A a G).
+        data_tests:
+          - not_null
+          - accepted_values:
+              values: ['A', 'B', 'C', 'D', 'E', 'F', 'G']
+
+      - name: loan_sub_grade
+        description: Sub-grado de riesgo (A1-G5).
+        data_tests:
+          - not_null
+
+      - name: loan_purpose
+        description: Proposito declarado del prestamo (debt_consolidation, credit_card, etc.).
+        data_tests:
+          - not_null
+
+      - name: borrower_state
+        description: Estado de USA donde vive el deudor (codigo de 2 letras).
+        data_tests:
+          - not_null
+
+      - name: term_in_months
+        description: Plazo del prestamo en meses (36 o 60).
+        data_tests:
+          - not_null
+          - accepted_values:
+              values: ['36', '60']
+              quote: false
+
+      # =======================================================================
+      # Metricas base
+      # =======================================================================
+      - name: loan_amount
+        description: Monto solicitado por el deudor (USD).
+        data_tests:
+          - not_null
+
+      - name: funded_amount
+        description: >
+          Monto efectivamente financiado por los inversores (USD).
+          Invariante: siempre <= loan_amount.
+        data_tests:
+          - not_null
+          - dbt_utils.expression_is_true:
+              expression: "<= loan_amount"
+
+      - name: interest_rate
+        description: "Tasa de interes anual del prestamo (%)."
+        data_tests:
+          - not_null
+
+      - name: monthly_installment
+        description: Cuota mensual que debe pagar el deudor (USD).
+        data_tests:
+          - not_null
+
+      # =======================================================================
+      # Metricas pre-calculadas
+      # =======================================================================
+      - name: total_expected_payment
+        description: >
+          Total esperado a pagar durante toda la vida del prestamo.
+          Formula: monthly_installment * term_in_months.
+          Invariante: siempre > funded_amount (el deudor paga capital + interes).
+        data_tests:
+          - not_null
+          - dbt_utils.expression_is_true:
+              expression: "> funded_amount"
+
+      - name: expected_interest
+        description: >
+          Interes esperado a cobrar durante la vida del prestamo.
+          Formula: total_expected_payment - funded_amount.
+          Es la ganancia bruta esperada de Lending Club por este prestamo.
+        data_tests:
+          - not_null
+
+      - name: funding_ratio
+        description: >
+          Ratio funded_amount / loan_amount. Rango esperado [0, 1].
+          Cuando es < 1, indica que los inversores no cubrieron el pedido total.
+
+      # =======================================================================
+      # Snapshot del deudor al originar
+      # =======================================================================
+      - name: borrower_fico_at_origination
+        description: FICO score promedio del deudor al momento de originar (300-850 aproximadamente).
+
+      - name: borrower_annual_income_at_origination
+        description: Ingreso anual declarado al originar (USD). Ya viene capeado a 10M en silver.
+
+      - name: borrower_dti_at_origination
+        description: Debt-to-income ratio al momento de originar.
+
+      # =======================================================================
+      # Metadata de linaje
+      # =======================================================================
+      - name: origination_date
+        description: Fecha completa de originacion (para display, joins usar origination_date_key).
+        data_tests:
+          - not_null
+
+      - name: origination_year
+        description: Anio de originacion. Usado como columna de particion.
+        data_tests:
+          - not_null
+
+      - name: dbt_updated_at
+        description: Timestamp de cuando se corrio el modelo dbt.
+        data_tests:
+          - not_null
+
+      - name: dbt_invocation_id
+        description: ID unico de la corrida dbt que genero esta fila (para trazabilidad).
+        data_tests:
+          - not_null
