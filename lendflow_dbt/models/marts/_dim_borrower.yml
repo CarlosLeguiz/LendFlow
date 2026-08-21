@@ -1,0 +1,157 @@
+version: 2
+
+models:
+  - name: dim_borrower
+    description: >
+      GRANO: un deudor por prestamo (borrower_key = loan_id).
+
+      Dimension con atributos del deudor al momento de originar,
+      enriquecida con buckets derivados (fico_bucket, income_bucket,
+      employment_bucket, dti_bucket) y region geografica (US Census).
+
+      LIMITACION IMPORTANTE:
+        El dataset de Lending Club no tiene borrower_id unico. Un mismo
+        deudor puede tener multiples prestamos y no podemos identificarlo.
+        Por eso adoptamos la convencion "un borrower por loan": cada
+        prestamo tiene su snapshot del deudor. No permite analisis de
+        cliente recurrente. En un caso real con borrower_id verdadero,
+        esta dim seria SCD Type 2.
+
+      Uso:
+        - Segmentacion en dashboards.
+        - Enriquecer facts sin recalcular buckets en cada query.
+
+    columns:
+      # =======================================================================
+      # Surrogate key
+      # =======================================================================
+      - name: borrower_key
+        description: >
+          Surrogate key del deudor. Igual a loan_id porque no hay borrower_id
+          real en el dataset (ver LIMITACION en descripcion del modelo).
+        data_tests:
+          - unique
+          - not_null
+
+      # =======================================================================
+      # FICO
+      # =======================================================================
+      - name: fico_score
+        description: FICO score promedio del deudor al momento de originar.
+        data_tests:
+          - not_null
+
+      - name: fico_bucket
+        description: >
+          Bucket estandar de FICO score:
+          poor (<580), fair (580-669), good (670-739),
+          very_good (740-799), exceptional (800+).
+        data_tests:
+          - not_null
+          - accepted_values:
+              values: ['poor', 'fair', 'good', 'very_good', 'exceptional']
+
+      # =======================================================================
+      # Ingreso
+      # =======================================================================
+      - name: annual_income
+        description: >
+          Ingreso anual declarado (USD). Puede ser null cuando el deudor no
+          declaro o cuando fue capeado como outlier en silver.
+
+      - name: income_bucket
+        description: >
+          Bucket de ingreso anual:
+          low_under_30k, mid_30k_60k, upper_mid_60k_100k,
+          high_100k_150k, very_high_over_150k, unknown.
+        data_tests:
+          - not_null
+          - accepted_values:
+              values:
+                - 'low_under_30k'
+                - 'mid_30k_60k'
+                - 'upper_mid_60k_100k'
+                - 'high_100k_150k'
+                - 'very_high_over_150k'
+                - 'unknown'
+
+      # =======================================================================
+      # Empleo
+      # =======================================================================
+      - name: employment_years
+        description: Anios de empleo declarados. Puede ser null si el deudor no declaro.
+
+      - name: employment_bucket
+        description: >
+          Bucket de antiguedad laboral:
+          less_than_1_year, junior_1_3_years, mid_4_7_years,
+          senior_8_plus_years, unknown.
+        data_tests:
+          - not_null
+          - accepted_values:
+              values:
+                - 'less_than_1_year'
+                - 'junior_1_3_years'
+                - 'mid_4_7_years'
+                - 'senior_8_plus_years'
+                - 'unknown'
+
+      # =======================================================================
+      # DTI
+      # =======================================================================
+      - name: debt_to_income_ratio
+        description: Ratio deuda mensual / ingreso mensual al momento de originar.
+
+      - name: dti_bucket
+        description: >
+          Bucket de debt-to-income:
+          low_under_10, moderate_10_20, high_20_30, very_high_over_30, unknown.
+        data_tests:
+          - not_null
+          - accepted_values:
+              values:
+                - 'low_under_10'
+                - 'moderate_10_20'
+                - 'high_20_30'
+                - 'very_high_over_30'
+                - 'unknown'
+
+      # =======================================================================
+      # Atributos categoricos
+      # =======================================================================
+      - name: home_ownership_status
+        description: Situacion habitacional (RENT, OWN, MORTGAGE, OTHER, etc).
+        data_tests:
+          - not_null
+
+      - name: income_verification_status
+        description: Si Lending Club verifico el ingreso declarado (Verified, Not Verified, Source Verified).
+        data_tests:
+          - not_null
+
+      - name: borrower_state
+        description: Estado de USA del deudor (codigo de 2 letras).
+        data_tests:
+          - not_null
+
+      - name: borrower_region
+        description: >
+          Region geografica del deudor segun US Census Bureau
+          (Northeast, Midwest, South, West, Unknown).
+        data_tests:
+          - not_null
+          - accepted_values:
+              values: ['Northeast', 'Midwest', 'South', 'West', 'Unknown']
+
+      # =======================================================================
+      # Metadata
+      # =======================================================================
+      - name: dbt_updated_at
+        description: Timestamp de cuando se corrio este modelo dbt.
+        data_tests:
+          - not_null
+
+      - name: dbt_invocation_id
+        description: ID unico de la corrida dbt que genero esta fila.
+        data_tests:
+          - not_null
