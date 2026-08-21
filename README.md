@@ -220,3 +220,6 @@ uv run dbt test
 
 Carlos Leguizamon Guillaumet
 [github.com/CarlosLeguiz](https://github.com/CarlosLeguiz)
+LinkedIn
+
+
