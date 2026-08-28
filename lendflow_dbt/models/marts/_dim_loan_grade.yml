@@ -1,0 +1,92 @@
+version: 2
+
+models:
+  - name: dim_loan_grade
+    description: >
+      GRANO: un sub-grado unico (A1, A2, ..., G5). 35 filas totales.
+
+      Dimension enriquecida de grados de riesgo asignados por Lending Club.
+      Agrega risk_tier (prime / near_prime / subprime / deep_subprime),
+      estadisticas historicas de tasa (avg, min, max) y volumen originado
+      por sub_grade.
+
+      Uso:
+        - Segmentacion en dashboards por risk_tier.
+        - Analisis de concentracion de portfolio.
+        - Referencia rapida de tasa promedio por grado sin recalcular.
+
+      Nota: las estadisticas de tasa y volumen son historicas (agregadas
+      de todos los prestamos originados). En un proyecto con data en vivo
+      esto seria una materializacion incremental que se actualiza diariamente.
+
+    columns:
+      - name: grade_key
+        description: Surrogate key (= loan_sub_grade). Ej "A1", "G5".
+        data_tests:
+          - unique
+          - not_null
+
+      - name: loan_grade
+        description: Grado macro asignado por Lending Club (A a G).
+        data_tests:
+          - not_null
+          - accepted_values:
+              values: ['A', 'B', 'C', 'D', 'E', 'F', 'G']
+
+      - name: loan_sub_grade
+        description: Sub-grado (A1-G5), granularidad fina del riesgo.
+        data_tests:
+          - not_null
+          - unique
+
+      - name: risk_tier
+        description: >
+          Agrupacion estandar de credit risk en fintech:
+            prime: A (mejor perfil).
+            near_prime: B, C.
+            subprime: D, E.
+            deep_subprime: F, G (mayor riesgo).
+        data_tests:
+          - not_null
+          - accepted_values:
+              values: ['prime', 'near_prime', 'subprime', 'deep_subprime']
+
+      - name: avg_interest_rate
+        description: "Tasa de interes promedio historica de todos los prestamos en este sub_grade (%)."
+        data_tests:
+          - not_null
+
+      - name: min_interest_rate
+        description: "Tasa minima historica en este sub_grade (%)."
+        data_tests:
+          - not_null
+
+      - name: max_interest_rate
+        description: "Tasa maxima historica en este sub_grade (%)."
+        data_tests:
+          - not_null
+
+      - name: loan_count
+        description: Cantidad total de prestamos historicos originados en este sub_grade.
+        data_tests:
+          - not_null
+
+      - name: total_originated_amount
+        description: Suma historica de loan_amount de todos los prestamos en este sub_grade (USD).
+        data_tests:
+          - not_null
+
+      - name: avg_loan_amount
+        description: Monto promedio de los prestamos en este sub_grade (USD).
+        data_tests:
+          - not_null
+
+      - name: dbt_updated_at
+        description: Timestamp de cuando se corrio este modelo dbt.
+        data_tests:
+          - not_null
+
+      - name: dbt_invocation_id
+        description: ID unico de la corrida dbt que genero esta fila.
+        data_tests:
+          - not_null
