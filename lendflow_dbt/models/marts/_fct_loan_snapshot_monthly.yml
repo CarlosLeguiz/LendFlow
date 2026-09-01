@@ -1,0 +1,111 @@
+version: 2
+
+models:
+  - name: fct_loan_snapshot_monthly
+    description: >
+      GRANO: un prestamo x un mes.
+
+      Fact de snapshots mensuales para vintage curves, roll rates y
+      portfolio at risk.
+
+      DESHABILITADO POR DEFAULT (enabled=false):
+        Este modelo no se materializa automaticamente en dbt run por su
+        alto costo (~70M filas). Para activarlo, cambiar enabled=true
+        en el config del SQL.
+
+      LIMITACION IMPORTANTE:
+        El dataset publico de Lending Club no expone snapshots historicos
+        reales de loan_status. Este modelo aproxima usando la logica:
+        - Meses intermedios: 'Current'.
+        - Ultimo mes: status final real.
+
+        Esta simplificacion es aceptable para vintage curves y volumenes,
+        pero NO refleja transiciones reales de mora. Los roll rates
+        seran artificialmente extremos.
+
+        En un caso real, la fuente serian:
+        1. Snapshots capturados por un job programado mensual (Airflow).
+        2. Change Data Capture (Debezium, AWS DMS) sobre la base transaccional.
+        3. Event sourcing con agregacion de eventos.
+
+      Uso principal (cuando esta activo):
+        - Vintage curves por cohort de originacion.
+        - Portfolio at Risk mensual.
+        - Roll rates (con la limitacion arriba).
+
+    columns:
+      - name: loan_id
+        description: Identificador del prestamo. NO unico en este fact (una fila por mes).
+        data_tests:
+          - not_null
+
+      - name: snapshot_date_key
+        description: FK a dim_date. Formato YYYYMMDD (primer dia del mes de snapshot).
+        data_tests:
+          - not_null
+
+      - name: snapshot_month
+        description: Fecha del snapshot (primer dia de cada mes).
+        data_tests:
+          - not_null
+
+      - name: snapshot_year
+        description: Anio del snapshot. Columna de particion.
+        data_tests:
+          - not_null
+
+      - name: snapshot_month_num
+        description: Mes del snapshot (1-12).
+        data_tests:
+          - not_null
+
+      - name: months_on_book
+        description: >
+          Edad del prestamo en meses al momento del snapshot.
+          Metrica clave para vintage curves.
+        data_tests:
+          - not_null
+
+      - name: origination_date_key
+        description: FK a dim_date. Fecha de originacion del prestamo.
+        data_tests:
+          - not_null
+
+      - name: origination_cohort
+        description: >
+          Cohort de originacion en formato "YYYY-MM".
+          Todos los prestamos originados en el mismo mes comparten cohort.
+          Alimenta el eje horizontal de las vintage curves.
+        data_tests:
+          - not_null
+
+      - name: loan_status_at_snapshot
+        description: >
+          Status del prestamo estimado en este snapshot.
+          Ver LIMITACION en la descripcion del modelo.
+
+      - name: delinquency_bucket_at_snapshot
+        description: >
+          Bucket de mora estimado en este snapshot.
+          Ver LIMITACION en la descripcion del modelo.
+
+      - name: loan_amount
+        description: Monto original del prestamo. Congelado al momento de originar.
+
+      - name: funded_amount
+        description: Monto financiado. Congelado al momento de originar.
+
+      - name: outstanding_principal
+        description: >
+          Saldo pendiente de capital. En este modelo simplificado se copia
+          del silver (valor actual). En un caso real seria el saldo real
+          en cada snapshot.
+
+      - name: term_in_months
+        description: Plazo original del prestamo (36 o 60 meses).
+
+      - name: dbt_updated_at
+        description: Timestamp de cuando se corrio este modelo.
+
+      - name: dbt_invocation_id
+        description: ID unico de la corrida dbt.
