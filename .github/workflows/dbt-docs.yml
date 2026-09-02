@@ -1,0 +1,104 @@
+# =============================================================================
+# Workflow: dbt docs → GitHub Pages
+# =============================================================================
+# Genera la documentacion de dbt en cada push a main y la publica en
+# GitHub Pages. URL resultante: https://<usuario>.github.io/<repo>/
+#
+# Requiere:
+#   - Secrets configurados en el repo: AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY,
+#     AWS_REGION.
+#   - GitHub Pages habilitado en Settings → Pages → Source: GitHub Actions.
+# =============================================================================
+
+name: Deploy dbt docs to GitHub Pages
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'lendflow_dbt/**'
+      - '.github/workflows/dbt-docs.yml'
+  workflow_dispatch:  # permite ejecucion manual desde la UI de GitHub
+
+# Permisos necesarios para publicar a GitHub Pages
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# Evita corridas concurrentes que se pisen entre si
+concurrency:
+  group: "pages"
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install uv
+        run: pip install uv
+
+      - name: Install dbt dependencies
+        working-directory: lendflow_dbt
+        run: |
+          uv pip install --system dbt-athena-community
+          dbt deps
+
+      - name: Configure dbt profile
+        run: |
+          mkdir -p ~/.dbt
+          cat > ~/.dbt/profiles.yml << EOF
+          lendflow_dbt:
+            target: dev
+            outputs:
+              dev:
+                type: athena
+                s3_staging_dir: s3://lendflow-athena-results-851563823943/staging/
+                s3_data_dir: s3://lendflow-data-851563823943/gold/
+                region_name: ${{ secrets.AWS_REGION }}
+                schema: lendflow_dev
+                database: awsdatacatalog
+                threads: 4
+                aws_access_key_id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+                aws_secret_access_key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          EOF
+
+      - name: Generate dbt docs
+        working-directory: lendflow_dbt
+        run: dbt docs generate
+
+      - name: Prepare Pages artifact
+        working-directory: lendflow_dbt
+        run: |
+          mkdir -p ../pages-content
+          cp target/index.html ../pages-content/
+          cp target/manifest.json ../pages-content/
+          cp target/catalog.json ../pages-content/
+          cp target/graph.gpickle ../pages-content/ 2>/dev/null || true
+          # dbt genera un index.html que espera manifest y catalog en la misma carpeta
+
+      - name: Upload artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: ./pages-content
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
