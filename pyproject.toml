@@ -8,9 +8,14 @@ authors = [
 ]
 requires-python = ">=3.11.9"
 dependencies = [
+    "boto3>=1.43.69",
     "dbt-athena-community>=1.11.0",
     "delta-spark==3.2.0",
+    "pandas>=3.0.5",
+    "plotly>=7.0.0",
+    "pyathena>=3.34.0",
     "pyspark==3.5.3",
+    "streamlit>=1.63.0",
 ]
 
 [project.scripts]
