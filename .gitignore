@@ -68,3 +68,10 @@ lendflow_dbt/logs/
 lendflow_dbt/target/
 lendflow_dbt/dbt_packages/
 logs/
+
+# Airflow
+airflow/logs/
+airflow/plugins/
+airflow/config/
+airflow/.env
+airflow/docker-compose.yaml.original
